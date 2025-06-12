@@ -133,6 +133,96 @@ func TestParseArgs_LeadingTrailingSpaces(t *testing.T) {
 	}
 }
 
+func TestParseArgs_MultipleQuotedArgs(t *testing.T) {
+	bot := &CinemaBot{}
+	args := bot.parseArgs(`;showtime -title="Movie One" -id="abc" -desc="A \"fun\" night"`)
+	expected := []string{";showtime", "-title=Movie One", "-id=abc", "-desc=A \"fun\" night"}
+	if !equalStringSlices(args, expected) {
+		t.Errorf("expected %v, got %v", expected, args)
+	}
+}
+
+func TestParseArgs_OnlySpaces(t *testing.T) {
+	bot := &CinemaBot{}
+	args := bot.parseArgs("     ")
+	expected := []string{}
+	if !equalStringSlices(args, expected) {
+		t.Errorf("expected %v, got %v", expected, args)
+	}
+}
+
+func TestParseArgs_TabSeparated(t *testing.T) {
+	bot := &CinemaBot{}
+	args := bot.parseArgs("\t;showtime\t-list\t")
+	expected := []string{";showtime", "-list"}
+	if !equalStringSlices(args, expected) {
+		t.Errorf("expected %v, got %v", expected, args)
+	}
+}
+
+func TestParseArgs_UnclosedQuote(t *testing.T) {
+	bot := &CinemaBot{}
+	args := bot.parseArgs(`;showtime -title="Unclosed`)
+	expected := []string{";showtime", "-title=Unclosed"}
+	if !equalStringSlices(args, expected) {
+		t.Errorf("expected %v, got %v", expected, args)
+	}
+}
+
+func TestParseArgs_EscapedBackslash(t *testing.T) {
+	bot := &CinemaBot{}
+	args := bot.parseArgs(`;showtime -title=Movie\\Night`)
+	expected := []string{";showtime", "-title=Movie\\Night"}
+	if !equalStringSlices(args, expected) {
+		t.Errorf("expected %v, got %v", expected, args)
+	}
+}
+
+func TestParseArgs_ComplexMix(t *testing.T) {
+	bot := &CinemaBot{}
+	args := bot.parseArgs(`;showtime -title="A \"Great\" Movie" -id=abc\ 123 -desc="Fun\tNight"`)
+	expected := []string{";showtime", "-title=A \"Great\" Movie", "-id=abc 123", "-desc=Fun\tNight"}
+	if !equalStringSlices(args, expected) {
+		t.Errorf("expected %v, got %v", expected, args)
+	}
+}
+
+func TestParseArgs_QuoteInsideUnquoted(t *testing.T) {
+	bot := &CinemaBot{}
+	args := bot.parseArgs(`;showtime -title=Movie"Night"`)
+	expected := []string{";showtime", "-title=MovieNight"}
+	if !equalStringSlices(args, expected) {
+		t.Errorf("expected %v, got %v", expected, args)
+	}
+}
+
+func TestParseArgs_ConsecutiveSpaces(t *testing.T) {
+	bot := &CinemaBot{}
+	args := bot.parseArgs(";showtime    -list    -foo   ")
+	expected := []string{";showtime", "-list", "-foo"}
+	if !equalStringSlices(args, expected) {
+		t.Errorf("expected %v, got %v", expected, args)
+	}
+}
+
+func TestParseArgs_OnlyQuotes(t *testing.T) {
+	bot := &CinemaBot{}
+	args := bot.parseArgs(`""`)
+	expected := []string{""}
+	if !equalStringSlices(args, expected) {
+		t.Errorf("expected %v, got %v", expected, args)
+	}
+}
+
+func TestParseArgs_QuoteWithEscapedBackslash(t *testing.T) {
+	bot := &CinemaBot{}
+	args := bot.parseArgs(`;showtime -title="Movie with \\backslash"`)
+	expected := []string{";showtime", "-title=Movie with \\backslash"}
+	if !equalStringSlices(args, expected) {
+		t.Errorf("expected %v, got %v", expected, args)
+	}
+}
+
 // Helper for comparing slices
 func equalStringSlices(a, b []string) bool {
 	if len(a) != len(b) {
