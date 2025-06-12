@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thoj/go-ircevent"
+	irc "github.com/thoj/go-ircevent"
 )
 
 type Config struct {
@@ -61,7 +61,7 @@ func (bot *CinemaBot) loadConfig(configFile string) error {
 		// Default config if no file specified
 		bot.config = Config{
 			Server:  "irc.snoonet.org:6667",
-			Nick:    "cinemabot",
+			Nick:    "sdcinemabot",
 			Channel: "#jadebotdev",
 		}
 		return nil
@@ -82,7 +82,7 @@ func (bot *CinemaBot) setupHandlers() {
 			bot.conn.Privmsg("NickServ", fmt.Sprintf("IDENTIFY %s", bot.config.NickServ.Password))
 			time.Sleep(2 * time.Second) // Wait for identification
 		}
-		
+
 		// Join channel
 		bot.conn.Join(bot.config.Channel)
 		log.Printf("Joined %s", bot.config.Channel)
@@ -112,18 +112,28 @@ func (bot *CinemaBot) handleShowtimeCommand(message, nick string) {
 		return
 	}
 
-	switch args[1] {
-	case "-list":
+	log.Printf("args -> %+v\n", args)
+
+	// Check if any argument starts with -delete
+	var hasDelete bool
+	for _, arg := range args[1:] {
+		if strings.HasPrefix(arg, "-delete") {
+			hasDelete = true
+			break
+		}
+	}
+
+	switch {
+	case args[1] == "-list":
 		bot.listShowtimes()
-	case "-delete":
+	case hasDelete:
 		bot.deleteShowtime(args, nick)
-	case "-create":
+	case args[1] == "-create":
 		bot.createShowtime(args, nick)
 	default:
 		bot.conn.Privmsg(bot.config.Channel, "Usage: ;showtime -list | -create [options] | -delete=\"id\"")
 	}
 }
-
 func (bot *CinemaBot) listShowtimes() {
 	if len(bot.showtimes) == 0 {
 		bot.conn.Privmsg(bot.config.Channel, "No showtimes scheduled.")
@@ -133,7 +143,7 @@ func (bot *CinemaBot) listShowtimes() {
 	bot.conn.Privmsg(bot.config.Channel, "Scheduled showtimes:")
 	for _, showtime := range bot.showtimes {
 		timeStr := showtime.DateTime.Format("2006-01-02 15:04:05")
-		msg := fmt.Sprintf("[%s] %s - %s (by %s)", 
+		msg := fmt.Sprintf("[%s] %s - %s (by %s)",
 			showtime.ID, showtime.Title, timeStr, showtime.CreatedBy)
 		bot.conn.Privmsg(bot.config.Channel, msg)
 	}
@@ -192,7 +202,7 @@ func (bot *CinemaBot) parseArgs(message string) []string {
 
 func (bot *CinemaBot) deleteShowtime(args []string, nick string) {
 	var id string
-	
+
 	// Parse -delete="id" format
 	for _, part := range args {
 		if strings.HasPrefix(part, "-delete=") {
@@ -314,7 +324,7 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 	bot.showtimes[id] = showtime
 
 	timeStr := datetime.Format("2006-01-02 15:04:05")
-	bot.conn.Privmsg(bot.config.Channel, 
+	bot.conn.Privmsg(bot.config.Channel,
 		fmt.Sprintf("Created showtime: [%s] %s - %s", id, title, timeStr))
 }
 
