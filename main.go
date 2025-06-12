@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -67,7 +67,7 @@ func (bot *CinemaBot) loadConfig(configFile string) error {
 		return nil
 	}
 
-	data, err := ioutil.ReadFile(configFile)
+	data, err := os.ReadFile(configFile)
 	if err != nil {
 		return err
 	}
@@ -111,8 +111,6 @@ func (bot *CinemaBot) handleShowtimeCommand(message, nick string) {
 		bot.conn.Privmsg(bot.config.Channel, "Usage: ;showtime -list | -create [options] | -delete=\"id\"")
 		return
 	}
-
-	log.Printf("args -> %+v\n", args)
 
 	// Check if any argument starts with -delete
 	var hasDelete bool
