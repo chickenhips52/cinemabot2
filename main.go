@@ -168,22 +168,55 @@ func (bot *CinemaBot) parseArgs(message string) []string {
 				current.WriteRune(char)
 				escaped = false
 			} else {
+				if inQuotes {
+					// End of quoted section - always add the current token, even if empty
+					args = append(args, current.String())
+					current.Reset()
+				}
 				inQuotes = !inQuotes
 			}
 		case ' ', '\t':
 			if escaped {
+				// Handle escaped spaces and tabs
 				current.WriteRune(char)
 				escaped = false
 			} else if inQuotes {
 				current.WriteRune(char)
 			} else {
+				// Outside quotes - this is a separator
 				if current.Len() > 0 {
 					args = append(args, current.String())
 					current.Reset()
 				}
 			}
+		case 't':
+			if escaped {
+				// Convert \t to actual tab character
+				current.WriteRune('\t')
+				escaped = false
+			} else {
+				current.WriteRune(char)
+			}
+		case 'n':
+			if escaped {
+				// Convert \n to actual newline character
+				current.WriteRune('\n')
+				escaped = false
+			} else {
+				current.WriteRune(char)
+			}
+		case 'r':
+			if escaped {
+				// Convert \r to actual carriage return character
+				current.WriteRune('\r')
+				escaped = false
+			} else {
+				current.WriteRune(char)
+			}
 		default:
 			if escaped {
+				// If we have an escape followed by something we don't handle specially,
+				// keep the backslash
 				current.WriteRune('\\')
 				escaped = false
 			}
@@ -191,6 +224,7 @@ func (bot *CinemaBot) parseArgs(message string) []string {
 		}
 	}
 
+	// Handle any remaining content
 	if current.Len() > 0 {
 		args = append(args, current.String())
 	}
