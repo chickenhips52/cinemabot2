@@ -139,19 +139,31 @@ func (bot *CinemaBot) handleNextMovieCommand(nick string) {
 	var nextShowtime *Showtime
 	var shortestDuration time.Duration
 
+	// Debug logging
+	log.Printf("NextMovie command called by %s at %s", nick, now.Format("2006-01-02 15:04:05"))
+	log.Printf("Total showtimes in memory: %d", len(bot.showtimes))
+
 	// Find the next upcoming showtime
-	for _, showtime := range bot.showtimes {
+	for id, showtime := range bot.showtimes {
+		log.Printf("Checking showtime [%s]: %s at %s", id, showtime.Title, showtime.DateTime.Format("2006-01-02 15:04:05"))
+		log.Printf("  Current time: %s", now.Format("2006-01-02 15:04:05"))
+		log.Printf("  Is after now? %t", showtime.DateTime.After(now))
+
 		if showtime.DateTime.After(now) {
 			duration := showtime.DateTime.Sub(now)
+			log.Printf("  Duration until showtime: %s", duration.String())
+
 			if nextShowtime == nil || duration < shortestDuration {
 				nextShowtime = &showtime
 				shortestDuration = duration
+				log.Printf("  This is now the next showtime")
 			}
 		}
 	}
 
 	if nextShowtime == nil {
 		bot.conn.Privmsg(bot.config.Channel, "No upcoming movies scheduled!")
+		log.Printf("No upcoming movies found")
 		return
 	}
 
@@ -160,8 +172,109 @@ func (bot *CinemaBot) handleNextMovieCommand(nick string) {
 
 	message := fmt.Sprintf("%s, %s is playing!", timeMessage, nextShowtime.Title)
 	bot.conn.Privmsg(bot.config.Channel, message)
+	log.Printf("Next movie response sent: %s", message)
 }
 
+// Also fix the createShowtime function to ensure consistent timezone handling
+func (bot *CinemaBot) createShowtime(args []string, nick string) {
+	var id, title string
+	var hours, minutes, seconds, month, day, year int
+	var err error
+
+	// Parse arguments (same as before)
+	for _, part := range args[2:] { // Skip ";showtime" and "-create"
+		if strings.HasPrefix(part, "-id=") {
+			id = strings.Trim(strings.TrimPrefix(part, "-id="), "\"")
+		} else if strings.HasPrefix(part, "-title=") {
+			title = strings.Trim(strings.TrimPrefix(part, "-title="), "\"")
+		} else if strings.HasPrefix(part, "-hours=") {
+			hours, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-hours="), "\""))
+			if err != nil {
+				bot.conn.Privmsg(bot.config.Channel, "Invalid hours value.")
+				return
+			}
+		} else if strings.HasPrefix(part, "-minutes=") {
+			minutes, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-minutes="), "\""))
+			if err != nil {
+				bot.conn.Privmsg(bot.config.Channel, "Invalid minutes value.")
+				return
+			}
+		} else if strings.HasPrefix(part, "-seconds=") || strings.HasPrefix(part, "-sec=") {
+			var secStr string
+			if strings.HasPrefix(part, "-seconds=") {
+				secStr = strings.Trim(strings.TrimPrefix(part, "-seconds="), "\"")
+			} else {
+				secStr = strings.Trim(strings.TrimPrefix(part, "-sec="), "\"")
+			}
+			seconds, err = strconv.Atoi(secStr)
+			if err != nil {
+				bot.conn.Privmsg(bot.config.Channel, "Invalid seconds value.")
+				return
+			}
+		} else if strings.HasPrefix(part, "-month=") {
+			month, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-month="), "\""))
+			if err != nil {
+				bot.conn.Privmsg(bot.config.Channel, "Invalid month value.")
+				return
+			}
+		} else if strings.HasPrefix(part, "-day=") {
+			day, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-day="), "\""))
+			if err != nil {
+				bot.conn.Privmsg(bot.config.Channel, "Invalid day value.")
+				return
+			}
+		} else if strings.HasPrefix(part, "-year=") {
+			year, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-year="), "\""))
+			if err != nil {
+				bot.conn.Privmsg(bot.config.Channel, "Invalid year value.")
+				return
+			}
+		}
+	}
+
+	// Validate required fields
+	if id == "" || title == "" {
+		bot.conn.Privmsg(bot.config.Channel, "Required: -id=\"id\" -title=\"title\"")
+		return
+	}
+
+	// Check if ID already exists
+	if _, exists := bot.showtimes[id]; exists {
+		bot.conn.Privmsg(bot.config.Channel, fmt.Sprintf("Showtime with ID '%s' already exists.", id))
+		return
+	}
+
+	// Create datetime - use current time as base if not all fields specified
+	now := time.Now()
+	if year == 0 {
+		year = now.Year()
+	}
+	if month == 0 {
+		month = int(now.Month())
+	}
+	if day == 0 {
+		day = now.Day()
+	}
+
+	// FIXED: Use the same timezone as time.Now() for consistency
+	datetime := time.Date(year, time.Month(month), day, hours, minutes, seconds, 0, now.Location())
+
+	showtime := Showtime{
+		ID:        id,
+		Title:     title,
+		DateTime:  datetime,
+		CreatedBy: nick,
+	}
+
+	bot.showtimes[id] = showtime
+
+	timeStr := datetime.Format("2006-01-02 15:04:05")
+	bot.conn.Privmsg(bot.config.Channel,
+		fmt.Sprintf("Created showtime: [%s] %s - %s", id, title, timeStr))
+
+	// Debug logging
+	log.Printf("Created showtime [%s]: %s at %s (created by %s)", id, title, timeStr, nick)
+}
 func (bot *CinemaBot) formatTimeUntil(duration time.Duration) string {
 	totalSeconds := int(duration.Seconds())
 
@@ -374,102 +487,6 @@ func (bot *CinemaBot) deleteShowtime(args []string, nick string) {
 
 	delete(bot.showtimes, id)
 	bot.conn.Privmsg(bot.config.Channel, fmt.Sprintf("Deleted showtime: %s", id))
-}
-
-func (bot *CinemaBot) createShowtime(args []string, nick string) {
-	var id, title string
-	var hours, minutes, seconds, month, day, year int
-	var err error
-
-	// Parse arguments
-	for _, part := range args[2:] { // Skip ";showtime" and "-create"
-		if strings.HasPrefix(part, "-id=") {
-			id = strings.Trim(strings.TrimPrefix(part, "-id="), "\"")
-		} else if strings.HasPrefix(part, "-title=") {
-			title = strings.Trim(strings.TrimPrefix(part, "-title="), "\"")
-		} else if strings.HasPrefix(part, "-hours=") {
-			hours, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-hours="), "\""))
-			if err != nil {
-				bot.conn.Privmsg(bot.config.Channel, "Invalid hours value.")
-				return
-			}
-		} else if strings.HasPrefix(part, "-minutes=") {
-			minutes, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-minutes="), "\""))
-			if err != nil {
-				bot.conn.Privmsg(bot.config.Channel, "Invalid minutes value.")
-				return
-			}
-		} else if strings.HasPrefix(part, "-seconds=") || strings.HasPrefix(part, "-sec=") {
-			var secStr string
-			if strings.HasPrefix(part, "-seconds=") {
-				secStr = strings.Trim(strings.TrimPrefix(part, "-seconds="), "\"")
-			} else {
-				secStr = strings.Trim(strings.TrimPrefix(part, "-sec="), "\"")
-			}
-			seconds, err = strconv.Atoi(secStr)
-			if err != nil {
-				bot.conn.Privmsg(bot.config.Channel, "Invalid seconds value.")
-				return
-			}
-		} else if strings.HasPrefix(part, "-month=") {
-			month, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-month="), "\""))
-			if err != nil {
-				bot.conn.Privmsg(bot.config.Channel, "Invalid month value.")
-				return
-			}
-		} else if strings.HasPrefix(part, "-day=") {
-			day, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-day="), "\""))
-			if err != nil {
-				bot.conn.Privmsg(bot.config.Channel, "Invalid day value.")
-				return
-			}
-		} else if strings.HasPrefix(part, "-year=") {
-			year, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-year="), "\""))
-			if err != nil {
-				bot.conn.Privmsg(bot.config.Channel, "Invalid year value.")
-				return
-			}
-		}
-	}
-
-	// Validate required fields
-	if id == "" || title == "" {
-		bot.conn.Privmsg(bot.config.Channel, "Required: -id=\"id\" -title=\"title\"")
-		return
-	}
-
-	// Check if ID already exists
-	if _, exists := bot.showtimes[id]; exists {
-		bot.conn.Privmsg(bot.config.Channel, fmt.Sprintf("Showtime with ID '%s' already exists.", id))
-		return
-	}
-
-	// Create datetime - use current time as base if not all fields specified
-	now := time.Now()
-	if year == 0 {
-		year = now.Year()
-	}
-	if month == 0 {
-		month = int(now.Month())
-	}
-	if day == 0 {
-		day = now.Day()
-	}
-
-	datetime := time.Date(year, time.Month(month), day, hours, minutes, seconds, 0, time.Local)
-
-	showtime := Showtime{
-		ID:        id,
-		Title:     title,
-		DateTime:  datetime,
-		CreatedBy: nick,
-	}
-
-	bot.showtimes[id] = showtime
-
-	timeStr := datetime.Format("2006-01-02 15:04:05")
-	bot.conn.Privmsg(bot.config.Channel,
-		fmt.Sprintf("Created showtime: [%s] %s - %s", id, title, timeStr))
 }
 
 func (bot *CinemaBot) Connect() error {
