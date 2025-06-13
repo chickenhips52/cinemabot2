@@ -251,7 +251,7 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 		const layout = "2006-01-02 15:04:05"
 		datetime, err = time.Parse(layout, date)
 		if err != nil {
-			bot.conn.Privmsg(bot.config.Channel, "Invalid date format. Use RFC822 format. Example: ")
+			bot.conn.Privmsg(bot.config.Channel, "Invalid date format. Example: 2025-07-02 15:04:05")
 			return
 		}
 	} else {
