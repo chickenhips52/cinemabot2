@@ -258,6 +258,12 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 		datetime = time.Date(year, time.Month(month), day, hours, minutes, seconds, 0, now.Location())
 	}
 
+	// Ensure datetime is in the future
+	if datetime.Before(now) {
+		bot.conn.Privmsg(bot.config.Channel, "Showtime must be in the future.")
+		return
+	}
+
 	showtime := Showtime{
 		ID:        id,
 		Title:     title,
