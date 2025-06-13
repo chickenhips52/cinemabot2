@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -370,14 +371,36 @@ func (bot *CinemaBot) Connect() error {
 	return nil
 }
 
+// startHealthCheckServer starts a simple HTTP server for health checks
+func startHealthCheckServer() {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
+	log.Printf("Starting health check server on :8000")
+	go func() {
+		if err := http.ListenAndServe(":8000", nil); err != nil {
+			log.Printf("Health check server error: %v", err)
+		}
+	}()
+}
+
 func main() {
-	configFile := flag.String("config", "", "Path to config file (optional)")
+	configFile := flag.String("config", "bot_config.json", "Path to config file (optional)")
 	flag.Parse()
 
 	bot, err := NewCinemaBot(*configFile)
 	if err != nil {
 		log.Fatalf("Failed to create bot: %v", err)
 	}
+
+	// Start health check server
+	startHealthCheckServer()
 
 	log.Printf("Starting CinemaBot...")
 	log.Printf("Server: %s", bot.config.Server)
