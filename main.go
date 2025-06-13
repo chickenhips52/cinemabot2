@@ -118,7 +118,7 @@ func authorizedShowtimeCommand(nick, host string) bool {
 		"infinitehazlep": true,
 		"chickenhips":    true,
 		"Eriks":          true,
-		"jade36"          true,
+		"jade36":         true,
 	}
 
 	if authorizedNicks[nick] && host == "user/"+nick {
