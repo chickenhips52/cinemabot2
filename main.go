@@ -139,31 +139,19 @@ func (bot *CinemaBot) handleNextMovieCommand(nick string) {
 	var nextShowtime *Showtime
 	var shortestDuration time.Duration
 
-	// Debug logging
-	log.Printf("NextMovie command called by %s at %s", nick, now.Format("2006-01-02 15:04:05"))
-	log.Printf("Total showtimes in memory: %d", len(bot.showtimes))
-
 	// Find the next upcoming showtime
-	for id, showtime := range bot.showtimes {
-		log.Printf("Checking showtime [%s]: %s at %s", id, showtime.Title, showtime.DateTime.Format("2006-01-02 15:04:05"))
-		log.Printf("  Current time: %s", now.Format("2006-01-02 15:04:05"))
-		log.Printf("  Is after now? %t", showtime.DateTime.After(now))
-
+	for _, showtime := range bot.showtimes {
 		if showtime.DateTime.After(now) {
 			duration := showtime.DateTime.Sub(now)
-			log.Printf("  Duration until showtime: %s", duration.String())
-
 			if nextShowtime == nil || duration < shortestDuration {
 				nextShowtime = &showtime
 				shortestDuration = duration
-				log.Printf("  This is now the next showtime")
 			}
 		}
 	}
 
 	if nextShowtime == nil {
 		bot.conn.Privmsg(bot.config.Channel, "No upcoming movies scheduled!")
-		log.Printf("No upcoming movies found")
 		return
 	}
 
