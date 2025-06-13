@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -109,6 +110,11 @@ func (bot *CinemaBot) setupHandlers() {
 				log.Printf("Unauthorized showtime command attempt by %s!%s", nick, host)
 			}
 		}
+
+		// Handle ;nextmovie command (available to everyone)
+		if strings.HasPrefix(message, ";nextmovie") {
+			bot.handleNextMovieCommand(nick)
+		}
 	})
 }
 
@@ -126,6 +132,77 @@ func authorizedShowtimeCommand(nick, host string) bool {
 	}
 
 	return false
+}
+
+func (bot *CinemaBot) handleNextMovieCommand(nick string) {
+	now := time.Now()
+	var nextShowtime *Showtime
+	var shortestDuration time.Duration
+
+	// Find the next upcoming showtime
+	for _, showtime := range bot.showtimes {
+		if showtime.DateTime.After(now) {
+			duration := showtime.DateTime.Sub(now)
+			if nextShowtime == nil || duration < shortestDuration {
+				nextShowtime = &showtime
+				shortestDuration = duration
+			}
+		}
+	}
+
+	if nextShowtime == nil {
+		bot.conn.Privmsg(bot.config.Channel, "No upcoming movies scheduled!")
+		return
+	}
+
+	// Format the time until the movie in a human-friendly way
+	timeMessage := bot.formatTimeUntil(shortestDuration)
+
+	message := fmt.Sprintf("%s, %s is playing!", timeMessage, nextShowtime.Title)
+	bot.conn.Privmsg(bot.config.Channel, message)
+}
+
+func (bot *CinemaBot) formatTimeUntil(duration time.Duration) string {
+	totalSeconds := int(duration.Seconds())
+
+	if totalSeconds < 60 {
+		if totalSeconds == 1 {
+			return "In 1 second"
+		}
+		return fmt.Sprintf("In %d seconds", totalSeconds)
+	}
+
+	hours := totalSeconds / 3600
+	minutes := (totalSeconds % 3600) / 60
+	seconds := totalSeconds % 60
+
+	var parts []string
+
+	if hours > 0 {
+		if hours == 1 {
+			parts = append(parts, "1 hour")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d hours", hours))
+		}
+	}
+
+	if minutes > 0 {
+		if minutes == 1 {
+			parts = append(parts, "1 minute")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d minutes", minutes))
+		}
+	}
+
+	if seconds > 0 {
+		if seconds == 1 {
+			parts = append(parts, "1 second")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d seconds", seconds))
+		}
+	}
+
+	return "In " + strings.Join(parts, ", ")
 }
 
 func (bot *CinemaBot) handleShowtimeCommand(message, nick string) {
@@ -156,14 +233,25 @@ func (bot *CinemaBot) handleShowtimeCommand(message, nick string) {
 		bot.conn.Privmsg(bot.config.Channel, "Usage: ;showtime -list | -create [options] | -delete=\"id\"")
 	}
 }
+
 func (bot *CinemaBot) listShowtimes() {
 	if len(bot.showtimes) == 0 {
 		bot.conn.Privmsg(bot.config.Channel, "No showtimes scheduled.")
 		return
 	}
 
-	bot.conn.Privmsg(bot.config.Channel, "Scheduled showtimes:")
+	// Sort showtimes by datetime for better display
+	var sortedShowtimes []Showtime
 	for _, showtime := range bot.showtimes {
+		sortedShowtimes = append(sortedShowtimes, showtime)
+	}
+
+	sort.Slice(sortedShowtimes, func(i, j int) bool {
+		return sortedShowtimes[i].DateTime.Before(sortedShowtimes[j].DateTime)
+	})
+
+	bot.conn.Privmsg(bot.config.Channel, "Scheduled showtimes:")
+	for _, showtime := range sortedShowtimes {
 		timeStr := showtime.DateTime.Format("2006-01-02 15:04:05")
 		msg := fmt.Sprintf("[%s] %s - %s (by %s)",
 			showtime.ID, showtime.Title, timeStr, showtime.CreatedBy)

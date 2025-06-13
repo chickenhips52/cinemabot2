@@ -1,5 +1,7 @@
 only approved users should be able to create showtimes.
 
+deployments to the test bot blow away the data.
+
 docker containers
 --
 15:22 <@infinitehazlep> i can run docker containers
