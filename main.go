@@ -62,7 +62,7 @@ func (bot *CinemaBot) loadConfig(configFile string) error {
 		bot.config = Config{
 			Server:  "irc.snoonet.org:6667",
 			Nick:    "sdcinemabot",
-			Channel: "#jadebotdev",
+			Channel: "#stopdrinkingcinema",
 		}
 		return nil
 	}
