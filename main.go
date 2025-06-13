@@ -94,7 +94,7 @@ func (bot *CinemaBot) setupHandlers() {
 		message := e.Message()
 		nick := e.Nick
 		host := e.Host
-		log.Printf("Message from %s!%s: %s", nick, host, message)
+		//log.Printf("Message from %s!%s: %s", nick, host, message)
 
 		// Only respond to messages in our channel
 		if e.Arguments[0] != bot.config.Channel {
