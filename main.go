@@ -175,6 +175,12 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 			id = strings.Trim(strings.TrimPrefix(part, "-id="), "\"")
 		} else if strings.HasPrefix(part, "-title=") {
 			title = strings.Trim(strings.TrimPrefix(part, "-title="), "\"")
+		} else if strings.HasPrefix(part, "-hour=") {
+			hours, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-hour="), "\""))
+			if err != nil {
+				bot.conn.Privmsg(bot.config.Channel, "Invalid hour value.")
+				return
+			}
 		} else if strings.HasPrefix(part, "-hours=") {
 			hours, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-hours="), "\""))
 			if err != nil {
@@ -185,6 +191,18 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 			minutes, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-minutes="), "\""))
 			if err != nil {
 				bot.conn.Privmsg(bot.config.Channel, "Invalid minutes value.")
+				return
+			}
+		} else if strings.HasPrefix(part, "-minute=") {
+			minutes, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-minute="), "\""))
+			if err != nil {
+				bot.conn.Privmsg(bot.config.Channel, "Invalid minute value.")
+				return
+			}
+		} else if strings.HasPrefix(part, "-second=") {
+			seconds, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-second="), "\""))
+			if err != nil {
+				bot.conn.Privmsg(bot.config.Channel, "Invalid second value.")
 				return
 			}
 		} else if strings.HasPrefix(part, "-seconds=") || strings.HasPrefix(part, "-sec=") {
@@ -264,6 +282,7 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 		return
 	}
 
+	// Create and store the showtime
 	showtime := Showtime{
 		ID:        id,
 		Title:     title,
@@ -280,6 +299,7 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 	// Debug logging
 	log.Printf("Created showtime [%s]: %s at %s (created by %s)", id, title, timeStr, nick)
 }
+
 func (bot *CinemaBot) formatTimeUntil(duration time.Duration) string {
 	totalSeconds := int(duration.Seconds())
 
