@@ -113,7 +113,7 @@ func (bot *CinemaBot) setupHandlers() {
 
 		// Handle ;nextmovie command (available to everyone)
 		if strings.HasPrefix(message, ";nextmovie") {
-			bot.handleNextMovieCommand(nick)
+			bot.handleNextMovieCommand()
 		}
 	})
 }
@@ -134,7 +134,7 @@ func authorizedShowtimeCommand(nick, host string) bool {
 	return false
 }
 
-func (bot *CinemaBot) handleNextMovieCommand(nick string) {
+func (bot *CinemaBot) handleNextMovieCommand() {
 	now := time.Now()
 	var nextShowtime *Showtime
 	var shortestDuration time.Duration
@@ -165,7 +165,7 @@ func (bot *CinemaBot) handleNextMovieCommand(nick string) {
 
 // Also fix the createShowtime function to ensure consistent timezone handling
 func (bot *CinemaBot) createShowtime(args []string, nick string) {
-	var id, title string
+	var id, title, date string
 	var hours, minutes, seconds, month, day, year int
 	var err error
 
@@ -217,6 +217,8 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 				bot.conn.Privmsg(bot.config.Channel, "Invalid year value.")
 				return
 			}
+		} else if strings.HasPrefix(part, "-date=") {
+			date = strings.Trim(strings.TrimPrefix(part, "-date="), "\"")
 		}
 	}
 
@@ -244,8 +246,17 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 		day = now.Day()
 	}
 
-	// FIXED: Use the same timezone as time.Now() for consistency
-	datetime := time.Date(year, time.Month(month), day, hours, minutes, seconds, 0, now.Location())
+	var datetime time.Time
+	if date != "" {
+		const layout = "2006-01-02 15:04:05"
+		datetime, err = time.Parse(layout, date)
+		if err != nil {
+			bot.conn.Privmsg(bot.config.Channel, "Invalid date format. Use RFC822 format. Example: ")
+			return
+		}
+	} else {
+		datetime = time.Date(year, time.Month(month), day, hours, minutes, seconds, 0, now.Location())
+	}
 
 	showtime := Showtime{
 		ID:        id,
