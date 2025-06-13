@@ -1,6 +1,6 @@
 module github.com/jadedragon942/cinemabot2
 
-go 1.24.4
+go 1.23
 
 require github.com/thoj/go-ircevent v0.0.0-20210723090443-73e444401d64
 
