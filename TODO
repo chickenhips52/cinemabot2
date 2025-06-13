@@ -1,5 +1,7 @@
-docker containers
+only approved users should be able to create showtimes.
 
+docker containers
+--
 15:22 <@infinitehazlep> i can run docker containers
 15:22 <@infinitehazlep> idk about exposing my box externally though, i need to learn 
                         more about how that works to see if it's something i'm 
@@ -13,7 +15,7 @@ docker containers
 15:24 <@infinitehazlep> i would!
 
 ideal vision
-
+--
 15:09 <@infinitehazlep> so like my ideal vision of this would be that it also 
                         operates in main to be able to advertise showtimes, running 
                         the countdown function that breaks shale and the echo 
@@ -26,6 +28,5 @@ ideal vision
 15:10 <@infinitehazlep> if it's just running here then it looks p close to 
                         operational as is!
 15:10 <@chickenhips> i'll talk to da mods about allowing the new cinema bot in main
-
 
 

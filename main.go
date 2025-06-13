@@ -92,6 +92,8 @@ func (bot *CinemaBot) setupHandlers() {
 	bot.conn.AddCallback("PRIVMSG", func(e *irc.Event) {
 		message := e.Message()
 		nick := e.Nick
+		host := e.Host
+		log.Printf("Message from %s!%s: %s", nick, host, message)
 
 		// Only respond to messages in our channel
 		if e.Arguments[0] != bot.config.Channel {
@@ -100,9 +102,30 @@ func (bot *CinemaBot) setupHandlers() {
 
 		// Handle ;showtime command
 		if strings.HasPrefix(message, ";showtime") {
-			bot.handleShowtimeCommand(message, nick)
+			if authorizedShowtimeCommand(nick, host) {
+				bot.handleShowtimeCommand(message, nick)
+			} else {
+				bot.conn.Privmsg(bot.config.Channel, fmt.Sprintf("%s: You are not authorized to use this command.", nick))
+				log.Printf("Unauthorized showtime command attempt by %s!%s", nick, host)
+			}
 		}
 	})
+}
+
+func authorizedShowtimeCommand(nick, host string) bool {
+
+	authorizedNicks := map[string]bool{
+		"infinitehazlep": true,
+		"chickenhips":    true,
+		"Eriks":          true,
+		"jade36"          true,
+	}
+
+	if authorizedNicks[nick] && host == "user/"+nick {
+		return true
+	}
+
+	return false
 }
 
 func (bot *CinemaBot) handleShowtimeCommand(message, nick string) {
