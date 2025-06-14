@@ -22,6 +22,7 @@ type Config struct {
 	NickServ struct {
 		Password string `json:"password,omitempty"`
 	} `json:"nickserv,omitempty"`
+	AuthorizedNicks map[string]bool `json:"authorized_nicks,omitempty"`
 }
 
 type Showtime struct {
@@ -103,7 +104,7 @@ func (bot *CinemaBot) setupHandlers() {
 
 		// Handle ;showtime command
 		if strings.HasPrefix(message, ";showtime") {
-			if authorizedShowtimeCommand(nick, host) {
+			if bot.authorizedShowtimeCommand(nick, host) {
 				bot.handleShowtimeCommand(message, nick)
 			} else {
 				bot.conn.Privmsg(bot.config.Channel, fmt.Sprintf("%s: You are not authorized to use this command.", nick))
@@ -118,16 +119,8 @@ func (bot *CinemaBot) setupHandlers() {
 	})
 }
 
-func authorizedShowtimeCommand(nick, host string) bool {
-
-	authorizedNicks := map[string]bool{
-		"infinitehazlep": true,
-		"chickenhips":    true,
-		"Eriks":          true,
-		"jade36":         true,
-	}
-
-	if authorizedNicks[nick] && host == "user/"+nick {
+func (bot *CinemaBot) authorizedShowtimeCommand(nick, host string) bool {
+	if bot.config.AuthorizedNicks[nick] && host == "user/"+nick {
 		return true
 	}
 
