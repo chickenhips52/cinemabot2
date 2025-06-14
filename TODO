@@ -1,34 +1,3 @@
-only approved users should be able to create showtimes.
-
-deployments to the test bot blow away the data.
-
-docker containers
---
-15:22 <@infinitehazlep> i can run docker containers
-15:22 <@infinitehazlep> idk about exposing my box externally though, i need to learn 
-                        more about how that works to see if it's something i'm 
-                        comfortable with
-15:23 <@infinitehazlep> fortunately the data is p unimportant lol, usually we're only 
-                        looking at a couple of movies in a week
-15:23 < jade36> i can ship you a docker container, methinks. that'd be entertaining 
-                to add.
-15:23 < jade36> or i can ship you a way to build your own docker container
-15:24 < jade36> if you want to learn that
-15:24 <@infinitehazlep> i would!
-
-ideal vision
---
-15:09 <@infinitehazlep> so like my ideal vision of this would be that it also 
-                        operates in main to be able to advertise showtimes, running 
-                        the countdown function that breaks shale and the echo 
-                        function that's been restricted because of shenanigans. but i 
-                        haven't been privy to any of the conversations around 
-                        restricting that echo feature or anything so i'm just wishing 
-                        out loud lol
-15:10 <@infinitehazlep> i'm just mentioning that stuff now while we're figuring stuff 
-                        out
-15:10 <@infinitehazlep> if it's just running here then it looks p close to 
-                        operational as is!
-15:10 <@chickenhips> i'll talk to da mods about allowing the new cinema bot in main
+deployments to the test bot blow away the data because all storage is in-memory.
 
 
