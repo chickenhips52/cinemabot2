@@ -27,6 +27,7 @@ WORKDIR /root/
 
 # Copy the binary from the builder stage
 COPY --from=builder /app/main .
+COPY --from=builder /app/bot_config.json .
 
 # Expose port 8000 (adjust as needed)
 EXPOSE 8000
