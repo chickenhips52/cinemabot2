@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	irc "github.com/thoj/go-ircevent"
@@ -79,6 +80,9 @@ func (bot *CinemaBot) loadConfig(configFile string) error {
 }
 
 func (bot *CinemaBot) setupHandlers() {
+
+	var mu sync.Mutex
+
 	bot.conn.AddCallback("001", func(e *irc.Event) {
 		// If NickServ password is configured, identify
 		if bot.config.NickServ.Password != "" {
@@ -102,6 +106,9 @@ func (bot *CinemaBot) setupHandlers() {
 			return
 		}
 
+		mu.Lock()
+		defer mu.Unlock()
+
 		// Handle ;showtime command
 		if strings.HasPrefix(message, ";showtime") {
 			if bot.authorizedShowtimeCommand(nick, host) {
@@ -116,7 +123,16 @@ func (bot *CinemaBot) setupHandlers() {
 		if strings.HasPrefix(message, ";nextmovie") {
 			bot.handleNextMovieCommand()
 		}
+
+		if strings.HasPrefix(message, ";date") {
+			bot.handleDateCommand()
+		}
 	})
+}
+
+func (bot *CinemaBot) handleDateCommand() {
+	// Write the current date out to the user
+	bot.conn.Privmsg(bot.config.Channel, time.Now().UTC().String())
 }
 
 func (bot *CinemaBot) authorizedShowtimeCommand(nick, host string) bool {
