@@ -118,4 +118,4 @@ A simple HTTP health check server runs on port 8000:
 
 ---
 
-**License:** MIT (see [LICENSE](LICENSE) if
+**License:** MIT (see [LICENSE](LICENSE) if present)
