@@ -51,7 +51,7 @@ func NewCinemaBot(configFile string) (*CinemaBot, error) {
 
 	// Setup IRC connection
 	bot.conn = irc.IRC(bot.config.Nick, bot.config.Nick)
-	bot.conn.VerboseCallbackHandler = true
+	bot.conn.VerboseCallbackHandler = false
 	bot.conn.Debug = false
 
 	// Add event handlers
@@ -99,7 +99,7 @@ func (bot *CinemaBot) setupHandlers() {
 		message := e.Message()
 		nick := e.Nick
 		host := e.Host
-		//log.Printf("Message from %s!%s: %s", nick, host, message)
+		//log.Printf("Message from %s!%s: %s", nick, host, message) // Removed message logging
 
 		// Only respond to messages in our channel
 		if e.Arguments[0] != bot.config.Channel {
