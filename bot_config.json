@@ -1,7 +1,7 @@
 {
   "server": "irc.snoonet.org:6667",
-  "channel": "#jadebotdev",
-  "nick": "jadebot",
+  "channel": "#stopdrinkingcinema",
+  "nick": "sdcinemabot",
   "nickserv": {
     "password": ""
   },
