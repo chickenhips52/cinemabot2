@@ -146,30 +146,50 @@ func (bot *CinemaBot) authorizedShowtimeCommand(nick, host string) bool {
 func (bot *CinemaBot) handleNextMovieCommand() {
 	now := time.Now()
 	var nextShowtime *Showtime
+	var currentShowtime *Showtime
 	var shortestDuration time.Duration
+	var shortestCurrentDuration time.Duration
 
-	// Find the next upcoming showtime
+	// Find the next upcoming showtime and the most recent past showtime
 	for _, showtime := range bot.showtimes {
 		if showtime.DateTime.After(now) {
+			// Future showtime
 			duration := showtime.DateTime.Sub(now)
 			if nextShowtime == nil || duration < shortestDuration {
 				nextShowtime = &showtime
 				shortestDuration = duration
 			}
+		} else {
+			// Past showtime - find the most recent one
+			duration := now.Sub(showtime.DateTime)
+			if currentShowtime == nil || duration < shortestCurrentDuration {
+				currentShowtime = &showtime
+				shortestCurrentDuration = duration
+			}
 		}
 	}
 
-	if nextShowtime == nil {
-		bot.conn.Privmsg(bot.config.Channel, "No upcoming movies scheduled!")
+	// Prioritize current/recently started movie over future ones
+	if currentShowtime != nil {
+		// Show how long the movie has been playing
+		timeMessage := bot.formatTimeSince(shortestCurrentDuration)
+		message := fmt.Sprintf("%s into %s", timeMessage, currentShowtime.Title)
+		bot.conn.Privmsg(bot.config.Channel, message)
+		log.Printf("Current movie response sent: %s", message)
 		return
 	}
 
-	// Format the time until the movie in a human-friendly way
-	timeMessage := bot.formatTimeUntil(shortestDuration)
+	// If no current movie, show next upcoming one
+	if nextShowtime != nil {
+		timeMessage := bot.formatTimeUntil(shortestDuration)
+		message := fmt.Sprintf("%s, %s is playing!", timeMessage, nextShowtime.Title)
+		bot.conn.Privmsg(bot.config.Channel, message)
+		log.Printf("Next movie response sent: %s", message)
+		return
+	}
 
-	message := fmt.Sprintf("%s, %s is playing!", timeMessage, nextShowtime.Title)
-	bot.conn.Privmsg(bot.config.Channel, message)
-	log.Printf("Next movie response sent: %s", message)
+	// No movies at all
+	bot.conn.Privmsg(bot.config.Channel, "No movies scheduled!")
 }
 
 // Also fix the createShowtime function to ensure consistent timezone handling
@@ -285,11 +305,11 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 		datetime = time.Date(year, time.Month(month), day, hours, minutes, seconds, 0, now.Location())
 	}
 
-	// Ensure datetime is in the future
-	if datetime.Before(now) {
-		bot.conn.Privmsg(bot.config.Channel, "Showtime must be in the future.")
-		return
-	}
+	// Remove the future-only restriction to allow creating past showtimes for tracking
+	// if datetime.Before(now) {
+	//     bot.conn.Privmsg(bot.config.Channel, "Showtime must be in the future.")
+	//     return
+	// }
 
 	// Create and store the showtime
 	showtime := Showtime{
@@ -350,6 +370,50 @@ func (bot *CinemaBot) formatTimeUntil(duration time.Duration) string {
 	}
 
 	return "In " + strings.Join(parts, ", ")
+}
+
+// New function to format elapsed time since movie started
+func (bot *CinemaBot) formatTimeSince(duration time.Duration) string {
+	totalSeconds := int(duration.Seconds())
+
+	if totalSeconds < 60 {
+		if totalSeconds == 1 {
+			return "1 second"
+		}
+		return fmt.Sprintf("%d seconds", totalSeconds)
+	}
+
+	hours := totalSeconds / 3600
+	minutes := (totalSeconds % 3600) / 60
+	seconds := totalSeconds % 60
+
+	var parts []string
+
+	if hours > 0 {
+		if hours == 1 {
+			parts = append(parts, "1 hour")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d hours", hours))
+		}
+	}
+
+	if minutes > 0 {
+		if minutes == 1 {
+			parts = append(parts, "1 minute")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d minutes", minutes))
+		}
+	}
+
+	if seconds > 0 {
+		if seconds == 1 {
+			parts = append(parts, "1 second")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d seconds", seconds))
+		}
+	}
+
+	return strings.Join(parts, ", ")
 }
 
 func (bot *CinemaBot) handleShowtimeCommand(message, nick string) {
