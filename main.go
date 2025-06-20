@@ -131,8 +131,9 @@ func (bot *CinemaBot) setupHandlers() {
 }
 
 func (bot *CinemaBot) handleDateCommand() {
-	// Write the current date out to the user
-	bot.conn.Privmsg(bot.config.Channel, time.Now().UTC().String())
+	// Write the current date in UTC
+	now := time.Now().UTC()
+	bot.conn.Privmsg(bot.config.Channel, fmt.Sprintf("Current time (UTC): %s", now.Format("2006-01-02 15:04:05 MST")))
 }
 
 func (bot *CinemaBot) authorizedShowtimeCommand(nick, host string) bool {
@@ -144,7 +145,7 @@ func (bot *CinemaBot) authorizedShowtimeCommand(nick, host string) bool {
 }
 
 func (bot *CinemaBot) handleNextMovieCommand() {
-	now := time.Now()
+	now := time.Now().UTC() // Always use UTC
 	var nextShowtime *Showtime
 	var currentShowtime *Showtime
 	var shortestDuration time.Duration
@@ -152,6 +153,7 @@ func (bot *CinemaBot) handleNextMovieCommand() {
 
 	// Find the next upcoming showtime and the most recent past showtime
 	for _, showtime := range bot.showtimes {
+		// All times are stored in UTC
 		if showtime.DateTime.After(now) {
 			// Future showtime
 			duration := showtime.DateTime.Sub(now)
@@ -192,76 +194,71 @@ func (bot *CinemaBot) handleNextMovieCommand() {
 	bot.conn.Privmsg(bot.config.Channel, "No movies scheduled!")
 }
 
-// Also fix the createShowtime function to ensure consistent timezone handling
 func (bot *CinemaBot) createShowtime(args []string, nick string) {
 	var id, title, date string
 	var hours, minutes, seconds, month, day, year int
 	var err error
 
-	// Parse arguments (same as before)
+	// Parse arguments
 	for _, part := range args[2:] { // Skip ";showtime" and "-create"
 		if strings.HasPrefix(part, "-id=") {
 			id = strings.Trim(strings.TrimPrefix(part, "-id="), "\"")
 		} else if strings.HasPrefix(part, "-title=") {
 			title = strings.Trim(strings.TrimPrefix(part, "-title="), "\"")
-		} else if strings.HasPrefix(part, "-hour=") {
-			hours, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-hour="), "\""))
-			if err != nil {
-				bot.conn.Privmsg(bot.config.Channel, "Invalid hour value.")
+		} else if strings.HasPrefix(part, "-hour=") || strings.HasPrefix(part, "-hours=") {
+			var hourStr string
+			if strings.HasPrefix(part, "-hour=") {
+				hourStr = strings.Trim(strings.TrimPrefix(part, "-hour="), "\"")
+			} else {
+				hourStr = strings.Trim(strings.TrimPrefix(part, "-hours="), "\"")
+			}
+			hours, err = strconv.Atoi(hourStr)
+			if err != nil || hours < 0 || hours > 23 {
+				bot.conn.Privmsg(bot.config.Channel, "Invalid hour value (must be 0-23).")
 				return
 			}
-		} else if strings.HasPrefix(part, "-hours=") {
-			hours, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-hours="), "\""))
-			if err != nil {
-				bot.conn.Privmsg(bot.config.Channel, "Invalid hours value.")
+		} else if strings.HasPrefix(part, "-minute=") || strings.HasPrefix(part, "-minutes=") {
+			var minStr string
+			if strings.HasPrefix(part, "-minute=") {
+				minStr = strings.Trim(strings.TrimPrefix(part, "-minute="), "\"")
+			} else {
+				minStr = strings.Trim(strings.TrimPrefix(part, "-minutes="), "\"")
+			}
+			minutes, err = strconv.Atoi(minStr)
+			if err != nil || minutes < 0 || minutes > 59 {
+				bot.conn.Privmsg(bot.config.Channel, "Invalid minute value (must be 0-59).")
 				return
 			}
-		} else if strings.HasPrefix(part, "-minutes=") {
-			minutes, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-minutes="), "\""))
-			if err != nil {
-				bot.conn.Privmsg(bot.config.Channel, "Invalid minutes value.")
-				return
-			}
-		} else if strings.HasPrefix(part, "-minute=") {
-			minutes, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-minute="), "\""))
-			if err != nil {
-				bot.conn.Privmsg(bot.config.Channel, "Invalid minute value.")
-				return
-			}
-		} else if strings.HasPrefix(part, "-second=") {
-			seconds, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-second="), "\""))
-			if err != nil {
-				bot.conn.Privmsg(bot.config.Channel, "Invalid second value.")
-				return
-			}
-		} else if strings.HasPrefix(part, "-seconds=") || strings.HasPrefix(part, "-sec=") {
+		} else if strings.HasPrefix(part, "-second=") || strings.HasPrefix(part, "-seconds=") || strings.HasPrefix(part, "-sec=") {
 			var secStr string
-			if strings.HasPrefix(part, "-seconds=") {
+			if strings.HasPrefix(part, "-second=") {
+				secStr = strings.Trim(strings.TrimPrefix(part, "-second="), "\"")
+			} else if strings.HasPrefix(part, "-seconds=") {
 				secStr = strings.Trim(strings.TrimPrefix(part, "-seconds="), "\"")
 			} else {
 				secStr = strings.Trim(strings.TrimPrefix(part, "-sec="), "\"")
 			}
 			seconds, err = strconv.Atoi(secStr)
-			if err != nil {
-				bot.conn.Privmsg(bot.config.Channel, "Invalid seconds value.")
+			if err != nil || seconds < 0 || seconds > 59 {
+				bot.conn.Privmsg(bot.config.Channel, "Invalid second value (must be 0-59).")
 				return
 			}
 		} else if strings.HasPrefix(part, "-month=") {
 			month, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-month="), "\""))
-			if err != nil {
-				bot.conn.Privmsg(bot.config.Channel, "Invalid month value.")
+			if err != nil || month < 1 || month > 12 {
+				bot.conn.Privmsg(bot.config.Channel, "Invalid month value (must be 1-12).")
 				return
 			}
 		} else if strings.HasPrefix(part, "-day=") {
 			day, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-day="), "\""))
-			if err != nil {
-				bot.conn.Privmsg(bot.config.Channel, "Invalid day value.")
+			if err != nil || day < 1 || day > 31 {
+				bot.conn.Privmsg(bot.config.Channel, "Invalid day value (must be 1-31).")
 				return
 			}
 		} else if strings.HasPrefix(part, "-year=") {
 			year, err = strconv.Atoi(strings.Trim(strings.TrimPrefix(part, "-year="), "\""))
-			if err != nil {
-				bot.conn.Privmsg(bot.config.Channel, "Invalid year value.")
+			if err != nil || year < 1900 || year > 2100 {
+				bot.conn.Privmsg(bot.config.Channel, "Invalid year value (must be 1900-2100).")
 				return
 			}
 		} else if strings.HasPrefix(part, "-date=") {
@@ -281,47 +278,68 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 		return
 	}
 
-	// Create datetime - use current time as base if not all fields specified
-	now := time.Now()
-	if year == 0 {
-		year = now.Year()
-	}
-	if month == 0 {
-		month = int(now.Month())
-	}
-	if day == 0 {
-		day = now.Day()
-	}
-
+	// Create datetime
+	now := time.Now().UTC()
 	var datetime time.Time
+
 	if date != "" {
-		const layout = "2006-01-02 15:04:05"
-		datetime, err = time.Parse(layout, date)
-		if err != nil {
-			bot.conn.Privmsg(bot.config.Channel, "Invalid date format. Example: 2025-07-02 15:04:05")
+		// Parse full date string - support multiple formats, always in UTC
+		formats := []string{
+			"2006-01-02 15:04:05",
+			"2006-01-02 15:04",
+			"01-02-2006 15:04:05",
+			"01-02-2006 15:04",
+			"2006/01/02 15:04:05",
+			"2006/01/02 15:04",
+		}
+
+		var parseErr error
+		for _, format := range formats {
+			datetime, parseErr = time.Parse(format, date)
+			if parseErr == nil {
+				// Convert to UTC if not already
+				datetime = datetime.UTC()
+				break
+			}
+		}
+
+		if parseErr != nil {
+			bot.conn.Privmsg(bot.config.Channel, "Invalid date format. Supported formats: 2006-01-02 15:04:05, 01-02-2006 15:04:05, 2006/01/02 15:04:05")
 			return
 		}
 	} else {
-		datetime = time.Date(year, time.Month(month), day, hours, minutes, seconds, 0, now.Location())
-	}
+		// Use current time as base if not all fields specified
+		if year == 0 {
+			year = now.Year()
+		}
+		if month == 0 {
+			month = int(now.Month())
+		}
+		if day == 0 {
+			day = now.Day()
+		}
 
-	// Remove the future-only restriction to allow creating past showtimes for tracking
-	// if datetime.Before(now) {
-	//     bot.conn.Privmsg(bot.config.Channel, "Showtime must be in the future.")
-	//     return
-	// }
+		// Create date in UTC and validate it's valid (handles leap years, month boundaries, etc.)
+		datetime = time.Date(year, time.Month(month), day, hours, minutes, seconds, 0, time.UTC)
+
+		// Check if the date is valid by comparing with what we intended
+		if datetime.Year() != year || int(datetime.Month()) != month || datetime.Day() != day {
+			bot.conn.Privmsg(bot.config.Channel, "Invalid date (check month/day combination and leap year).")
+			return
+		}
+	}
 
 	// Create and store the showtime
 	showtime := Showtime{
 		ID:        id,
 		Title:     title,
-		DateTime:  datetime,
+		DateTime:  datetime, // Store in UTC
 		CreatedBy: nick,
 	}
 
 	bot.showtimes[id] = showtime
 
-	timeStr := datetime.Format("2006-01-02 15:04:05")
+	timeStr := datetime.Format("2006-01-02 15:04:05 MST")
 	bot.conn.Privmsg(bot.config.Channel,
 		fmt.Sprintf("Created showtime: [%s] %s - %s", id, title, timeStr))
 
@@ -330,7 +348,12 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 }
 
 func (bot *CinemaBot) formatTimeUntil(duration time.Duration) string {
-	totalSeconds := int(duration.Seconds())
+	// Round to nearest second to avoid showing negative durations due to microsecond differences
+	totalSeconds := int(duration.Round(time.Second).Seconds())
+
+	if totalSeconds <= 0 {
+		return "Now"
+	}
 
 	if totalSeconds < 60 {
 		if totalSeconds == 1 {
@@ -361,7 +384,7 @@ func (bot *CinemaBot) formatTimeUntil(duration time.Duration) string {
 		}
 	}
 
-	if seconds > 0 {
+	if seconds > 0 && hours == 0 { // Only show seconds if less than an hour
 		if seconds == 1 {
 			parts = append(parts, "1 second")
 		} else {
@@ -372,9 +395,13 @@ func (bot *CinemaBot) formatTimeUntil(duration time.Duration) string {
 	return "In " + strings.Join(parts, ", ")
 }
 
-// New function to format elapsed time since movie started
 func (bot *CinemaBot) formatTimeSince(duration time.Duration) string {
-	totalSeconds := int(duration.Seconds())
+	// Round to nearest second
+	totalSeconds := int(duration.Round(time.Second).Seconds())
+
+	if totalSeconds <= 0 {
+		return "Just started"
+	}
 
 	if totalSeconds < 60 {
 		if totalSeconds == 1 {
@@ -405,7 +432,7 @@ func (bot *CinemaBot) formatTimeSince(duration time.Duration) string {
 		}
 	}
 
-	if seconds > 0 {
+	if seconds > 0 && hours == 0 { // Only show seconds if less than an hour
 		if seconds == 1 {
 			parts = append(parts, "1 second")
 		} else {
@@ -463,7 +490,8 @@ func (bot *CinemaBot) listShowtimes() {
 
 	bot.conn.Privmsg(bot.config.Channel, "Scheduled showtimes:")
 	for _, showtime := range sortedShowtimes {
-		timeStr := showtime.DateTime.Format("2006-01-02 15:04:05")
+		// Display time in UTC
+		timeStr := showtime.DateTime.Format("2006-01-02 15:04:05 MST")
 		msg := fmt.Sprintf("[%s] %s - %s (by %s)",
 			showtime.ID, showtime.Title, timeStr, showtime.CreatedBy)
 		bot.conn.Privmsg(bot.config.Channel, msg)
@@ -632,6 +660,7 @@ func main() {
 	log.Printf("Server: %s", bot.config.Server)
 	log.Printf("Nick: %s", bot.config.Nick)
 	log.Printf("Channel: %s", bot.config.Channel)
+	log.Printf("Timezone: UTC")
 
 	if err := bot.Connect(); err != nil {
 		log.Fatalf("Connection failed: %v", err)
