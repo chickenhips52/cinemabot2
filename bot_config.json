@@ -1,13 +1,15 @@
 {
   "server": "irc.snoonet.org:6667",
-  "channel": "#jadebotdev",
-  "nick": "cinemabot",
+  "channel": "#stopdrinkingcinema",
+  "nick": "sdcinemabot",
   "nickserv": {
     "password": ""
   },
   "use_tls": false,
   "authorized_nicks": {
     "jade36": true,
-    "infinitehazlep": true
+    "infinitehazlep": true,
+    "chickenhips": true,
+    "Eriks": true
   }
 }
