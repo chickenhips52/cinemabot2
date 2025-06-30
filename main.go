@@ -230,7 +230,7 @@ func (bot *CinemaBot) handleNextMovieCommand() {
 		timeMessage := bot.formatTimeUntil(duration)
 		message := fmt.Sprintf("%s, %s is playing!", timeMessage, nextShowtime.Title)
 		bot.conn.Privmsg(bot.config.Channel, message)
-		log.Printf("Next movie response sent: %s", message)
+		//log.Printf("Next movie response sent: %s", message)
 		return
 	}
 
@@ -472,7 +472,7 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 		fmt.Sprintf("Created showtime: [%s] %s - %s", id, title, timeStr))
 
 	// Debug logging
-	log.Printf("Created showtime [%s]: %s at %s (created by %s)", id, title, timeStr, nick)
+	//log.Printf("Created showtime [%s]: %s at %s (created by %s)", id, title, timeStr, nick)
 }
 
 func (bot *CinemaBot) showtimeExists(id string) (bool, error) {
