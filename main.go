@@ -1,18 +1,19 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	irc "github.com/thoj/go-ircevent"
 )
 
@@ -24,6 +25,7 @@ type Config struct {
 		Password string `json:"password,omitempty"`
 	} `json:"nickserv,omitempty"`
 	AuthorizedNicks map[string]bool `json:"authorized_nicks,omitempty"`
+	DatabasePath    string          `json:"database_path,omitempty"`
 }
 
 type Showtime struct {
@@ -31,22 +33,27 @@ type Showtime struct {
 	Title     string    `json:"title"`
 	DateTime  time.Time `json:"datetime"`
 	CreatedBy string    `json:"created_by"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type CinemaBot struct {
-	conn      *irc.Connection
-	config    Config
-	showtimes map[string]Showtime
+	conn   *irc.Connection
+	config Config
+	db     *sql.DB
+	mu     sync.RWMutex
 }
 
 func NewCinemaBot(configFile string) (*CinemaBot, error) {
-	bot := &CinemaBot{
-		showtimes: make(map[string]Showtime),
-	}
+	bot := &CinemaBot{}
 
 	// Load config
 	if err := bot.loadConfig(configFile); err != nil {
 		return nil, fmt.Errorf("failed to load config: %v", err)
+	}
+
+	// Initialize database
+	if err := bot.initDatabase(); err != nil {
+		return nil, fmt.Errorf("failed to initialize database: %v", err)
 	}
 
 	// Setup IRC connection
@@ -64,9 +71,10 @@ func (bot *CinemaBot) loadConfig(configFile string) error {
 	if configFile == "" {
 		// Default config if no file specified
 		bot.config = Config{
-			Server:  "irc.snoonet.org:6667",
-			Nick:    "sdcinemabot",
-			Channel: "#stopdrinkingcinema",
+			Server:       "irc.snoonet.org:6667",
+			Nick:         "sdcinemabot",
+			Channel:      "#stopdrinkingcinema",
+			DatabasePath: "cinema_bot.db",
 		}
 		return nil
 	}
@@ -76,13 +84,60 @@ func (bot *CinemaBot) loadConfig(configFile string) error {
 		return err
 	}
 
-	return json.Unmarshal(data, &bot.config)
+	if err := json.Unmarshal(data, &bot.config); err != nil {
+		return err
+	}
+
+	// Set default database path if not specified
+	if bot.config.DatabasePath == "" {
+		bot.config.DatabasePath = "cinema_bot.db"
+	}
+
+	return nil
+}
+
+func (bot *CinemaBot) initDatabase() error {
+	var err error
+	bot.db, err = sql.Open("sqlite3", bot.config.DatabasePath)
+	if err != nil {
+		return err
+	}
+
+	// Test connection
+	if err := bot.db.Ping(); err != nil {
+		return err
+	}
+
+	// Create showtimes table if it doesn't exist
+	createTableSQL := `
+	CREATE TABLE IF NOT EXISTS showtimes (
+		id TEXT PRIMARY KEY,
+		title TEXT NOT NULL,
+		datetime DATETIME NOT NULL,
+		created_by TEXT NOT NULL,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	
+	CREATE INDEX IF NOT EXISTS idx_datetime ON showtimes(datetime);
+	CREATE INDEX IF NOT EXISTS idx_created_by ON showtimes(created_by);
+	`
+
+	if _, err := bot.db.Exec(createTableSQL); err != nil {
+		return fmt.Errorf("failed to create table: %v", err)
+	}
+
+	log.Printf("Database initialized successfully at %s", bot.config.DatabasePath)
+	return nil
+}
+
+func (bot *CinemaBot) Close() error {
+	if bot.db != nil {
+		return bot.db.Close()
+	}
+	return nil
 }
 
 func (bot *CinemaBot) setupHandlers() {
-
-	var mu sync.Mutex
-
 	bot.conn.AddCallback("001", func(e *irc.Event) {
 		// If NickServ password is configured, identify
 		if bot.config.NickServ.Password != "" {
@@ -99,15 +154,14 @@ func (bot *CinemaBot) setupHandlers() {
 		message := e.Message()
 		nick := e.Nick
 		host := e.Host
-		//log.Printf("Message from %s!%s: %s", nick, host, message) // Removed message logging
 
 		// Only respond to messages in our channel
 		if e.Arguments[0] != bot.config.Channel {
 			return
 		}
 
-		mu.Lock()
-		defer mu.Unlock()
+		bot.mu.Lock()
+		defer bot.mu.Unlock()
 
 		// Handle ;showtime command
 		if strings.HasPrefix(message, ";showtime") {
@@ -140,50 +194,40 @@ func (bot *CinemaBot) authorizedShowtimeCommand(nick, host string) bool {
 	if bot.config.AuthorizedNicks[nick] && host == "user/"+nick {
 		return true
 	}
-
 	return false
 }
 
 func (bot *CinemaBot) handleNextMovieCommand() {
-	now := time.Now().UTC() // Always use UTC
-	var nextShowtime *Showtime
-	var currentShowtime *Showtime
-	var shortestDuration time.Duration
-	var shortestCurrentDuration time.Duration
+	now := time.Now().UTC()
 
-	// Find the next upcoming showtime and the most recent past showtime
-	for _, showtime := range bot.showtimes {
-		// All times are stored in UTC
-		if showtime.DateTime.After(now) {
-			// Future showtime
-			duration := showtime.DateTime.Sub(now)
-			if nextShowtime == nil || duration < shortestDuration {
-				nextShowtime = &showtime
-				shortestDuration = duration
-			}
-		} else {
-			// Past showtime - find the most recent one
-			duration := now.Sub(showtime.DateTime)
-			if currentShowtime == nil || duration < shortestCurrentDuration {
-				currentShowtime = &showtime
-				shortestCurrentDuration = duration
-			}
-		}
+	// Find the most recently started movie (within last 3 hours)
+	currentShowtime, err := bot.getCurrentShowtime(now)
+	if err != nil {
+		log.Printf("Error getting current showtime: %v", err)
+		bot.conn.Privmsg(bot.config.Channel, "Error retrieving current movie information.")
+		return
 	}
 
-	// Prioritize current/recently started movie over future ones
 	if currentShowtime != nil {
-		// Show how long the movie has been playing
-		timeMessage := bot.formatTimeSince(shortestCurrentDuration)
+		duration := now.Sub(currentShowtime.DateTime)
+		timeMessage := bot.formatTimeSince(duration)
 		message := fmt.Sprintf("%s into %s", timeMessage, currentShowtime.Title)
 		bot.conn.Privmsg(bot.config.Channel, message)
 		log.Printf("Current movie response sent: %s", message)
 		return
 	}
 
-	// If no current movie, show next upcoming one
+	// If no current movie, find the next upcoming one
+	nextShowtime, err := bot.getNextShowtime(now)
+	if err != nil {
+		log.Printf("Error getting next showtime: %v", err)
+		bot.conn.Privmsg(bot.config.Channel, "Error retrieving next movie information.")
+		return
+	}
+
 	if nextShowtime != nil {
-		timeMessage := bot.formatTimeUntil(shortestDuration)
+		duration := nextShowtime.DateTime.Sub(now)
+		timeMessage := bot.formatTimeUntil(duration)
 		message := fmt.Sprintf("%s, %s is playing!", timeMessage, nextShowtime.Title)
 		bot.conn.Privmsg(bot.config.Channel, message)
 		log.Printf("Next movie response sent: %s", message)
@@ -192,6 +236,79 @@ func (bot *CinemaBot) handleNextMovieCommand() {
 
 	// No movies at all
 	bot.conn.Privmsg(bot.config.Channel, "No movies scheduled!")
+}
+
+func (bot *CinemaBot) getCurrentShowtime(now time.Time) (*Showtime, error) {
+	// Look for movies that started within the last 3 hours
+	threeHoursAgo := now.Add(-3 * time.Hour)
+
+	query := `
+		SELECT id, title, datetime, created_by, created_at 
+		FROM showtimes 
+		WHERE datetime BETWEEN ? AND ? 
+		ORDER BY datetime DESC 
+		LIMIT 1
+	`
+
+	row := bot.db.QueryRow(query, threeHoursAgo.Format(time.RFC3339), now.Format(time.RFC3339))
+
+	var showtime Showtime
+	var datetimeStr, createdAtStr string
+
+	err := row.Scan(&showtime.ID, &showtime.Title, &datetimeStr, &showtime.CreatedBy, &createdAtStr)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	showtime.DateTime, err = time.Parse(time.RFC3339, datetimeStr)
+	if err != nil {
+		return nil, err
+	}
+
+	showtime.CreatedAt, err = time.Parse(time.RFC3339, createdAtStr)
+	if err != nil {
+		return nil, err
+	}
+
+	return &showtime, nil
+}
+
+func (bot *CinemaBot) getNextShowtime(now time.Time) (*Showtime, error) {
+	query := `
+		SELECT id, title, datetime, created_by, created_at 
+		FROM showtimes 
+		WHERE datetime > ? 
+		ORDER BY datetime ASC 
+		LIMIT 1
+	`
+
+	row := bot.db.QueryRow(query, now.Format(time.RFC3339))
+
+	var showtime Showtime
+	var datetimeStr, createdAtStr string
+
+	err := row.Scan(&showtime.ID, &showtime.Title, &datetimeStr, &showtime.CreatedBy, &createdAtStr)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	showtime.DateTime, err = time.Parse(time.RFC3339, datetimeStr)
+	if err != nil {
+		return nil, err
+	}
+
+	showtime.CreatedAt, err = time.Parse(time.RFC3339, createdAtStr)
+	if err != nil {
+		return nil, err
+	}
+
+	return &showtime, nil
 }
 
 func (bot *CinemaBot) createShowtime(args []string, nick string) {
@@ -273,7 +390,13 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 	}
 
 	// Check if ID already exists
-	if _, exists := bot.showtimes[id]; exists {
+	exists, err := bot.showtimeExists(id)
+	if err != nil {
+		log.Printf("Error checking showtime existence: %v", err)
+		bot.conn.Privmsg(bot.config.Channel, "Error checking showtime existence.")
+		return
+	}
+	if exists {
 		bot.conn.Privmsg(bot.config.Channel, fmt.Sprintf("Showtime with ID '%s' already exists.", id))
 		return
 	}
@@ -329,15 +452,20 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 		}
 	}
 
-	// Create and store the showtime
+	// Create and store the showtime in database
 	showtime := Showtime{
 		ID:        id,
 		Title:     title,
-		DateTime:  datetime, // Store in UTC
+		DateTime:  datetime,
 		CreatedBy: nick,
+		CreatedAt: now,
 	}
 
-	bot.showtimes[id] = showtime
+	if err := bot.insertShowtime(showtime); err != nil {
+		log.Printf("Error inserting showtime: %v", err)
+		bot.conn.Privmsg(bot.config.Channel, "Error creating showtime.")
+		return
+	}
 
 	timeStr := datetime.Format("2006-01-02 15:04:05 MST")
 	bot.conn.Privmsg(bot.config.Channel,
@@ -345,6 +473,30 @@ func (bot *CinemaBot) createShowtime(args []string, nick string) {
 
 	// Debug logging
 	log.Printf("Created showtime [%s]: %s at %s (created by %s)", id, title, timeStr, nick)
+}
+
+func (bot *CinemaBot) showtimeExists(id string) (bool, error) {
+	query := "SELECT COUNT(*) FROM showtimes WHERE id = ?"
+	var count int
+	err := bot.db.QueryRow(query, id).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func (bot *CinemaBot) insertShowtime(showtime Showtime) error {
+	query := `
+		INSERT INTO showtimes (id, title, datetime, created_by, created_at) 
+		VALUES (?, ?, ?, ?, ?)
+	`
+	_, err := bot.db.Exec(query,
+		showtime.ID,
+		showtime.Title,
+		showtime.DateTime.Format(time.RFC3339),
+		showtime.CreatedBy,
+		showtime.CreatedAt.Format(time.RFC3339))
+	return err
 }
 
 func (bot *CinemaBot) formatTimeUntil(duration time.Duration) string {
@@ -473,29 +625,65 @@ func (bot *CinemaBot) handleShowtimeCommand(message, nick string) {
 }
 
 func (bot *CinemaBot) listShowtimes() {
-	if len(bot.showtimes) == 0 {
+	showtimes, err := bot.getAllShowtimes()
+	if err != nil {
+		log.Printf("Error getting showtimes: %v", err)
+		bot.conn.Privmsg(bot.config.Channel, "Error retrieving showtimes.")
+		return
+	}
+
+	if len(showtimes) == 0 {
 		bot.conn.Privmsg(bot.config.Channel, "No showtimes scheduled.")
 		return
 	}
 
-	// Sort showtimes by datetime for better display
-	var sortedShowtimes []Showtime
-	for _, showtime := range bot.showtimes {
-		sortedShowtimes = append(sortedShowtimes, showtime)
-	}
-
-	sort.Slice(sortedShowtimes, func(i, j int) bool {
-		return sortedShowtimes[i].DateTime.Before(sortedShowtimes[j].DateTime)
-	})
-
 	bot.conn.Privmsg(bot.config.Channel, "Scheduled showtimes:")
-	for _, showtime := range sortedShowtimes {
+	for _, showtime := range showtimes {
 		// Display time in UTC
 		timeStr := showtime.DateTime.Format("2006-01-02 15:04:05 MST")
 		msg := fmt.Sprintf("[%s] %s - %s (by %s)",
 			showtime.ID, showtime.Title, timeStr, showtime.CreatedBy)
 		bot.conn.Privmsg(bot.config.Channel, msg)
 	}
+}
+
+func (bot *CinemaBot) getAllShowtimes() ([]Showtime, error) {
+	query := `
+		SELECT id, title, datetime, created_by, created_at 
+		FROM showtimes 
+		ORDER BY datetime ASC
+	`
+
+	rows, err := bot.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var showtimes []Showtime
+	for rows.Next() {
+		var showtime Showtime
+		var datetimeStr, createdAtStr string
+
+		err := rows.Scan(&showtime.ID, &showtime.Title, &datetimeStr, &showtime.CreatedBy, &createdAtStr)
+		if err != nil {
+			return nil, err
+		}
+
+		showtime.DateTime, err = time.Parse(time.RFC3339, datetimeStr)
+		if err != nil {
+			return nil, err
+		}
+
+		showtime.CreatedAt, err = time.Parse(time.RFC3339, createdAtStr)
+		if err != nil {
+			return nil, err
+		}
+
+		showtimes = append(showtimes, showtime)
+	}
+
+	return showtimes, rows.Err()
 }
 
 // parseArgs parses command arguments, handling quoted strings properly
@@ -599,20 +787,70 @@ func (bot *CinemaBot) deleteShowtime(args []string, nick string) {
 		return
 	}
 
-	showtime, exists := bot.showtimes[id]
-	if !exists {
+	showtime, err := bot.getShowtimeByID(id)
+	if err != nil {
+		log.Printf("Error getting showtime: %v", err)
+		bot.conn.Privmsg(bot.config.Channel, "Error retrieving showtime.")
+		return
+	}
+
+	if showtime == nil {
 		bot.conn.Privmsg(bot.config.Channel, fmt.Sprintf("Showtime with ID '%s' not found.", id))
 		return
 	}
 
-	// Only allow deletion by creator or admin check could be added here
+	// Only allow deletion by creator
 	if showtime.CreatedBy != nick {
 		bot.conn.Privmsg(bot.config.Channel, "You can only delete showtimes you created.")
 		return
 	}
 
-	delete(bot.showtimes, id)
+	if err := bot.deleteShowtimeByID(id); err != nil {
+		log.Printf("Error deleting showtime: %v", err)
+		bot.conn.Privmsg(bot.config.Channel, "Error deleting showtime.")
+		return
+	}
+
 	bot.conn.Privmsg(bot.config.Channel, fmt.Sprintf("Deleted showtime: %s", id))
+}
+
+func (bot *CinemaBot) getShowtimeByID(id string) (*Showtime, error) {
+	query := `
+		SELECT id, title, datetime, created_by, created_at 
+		FROM showtimes 
+		WHERE id = ?
+	`
+
+	row := bot.db.QueryRow(query, id)
+
+	var showtime Showtime
+	var datetimeStr, createdAtStr string
+
+	err := row.Scan(&showtime.ID, &showtime.Title, &datetimeStr, &showtime.CreatedBy, &createdAtStr)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	showtime.DateTime, err = time.Parse(time.RFC3339, datetimeStr)
+	if err != nil {
+		return nil, err
+	}
+
+	showtime.CreatedAt, err = time.Parse(time.RFC3339, createdAtStr)
+	if err != nil {
+		return nil, err
+	}
+
+	return &showtime, nil
+}
+
+func (bot *CinemaBot) deleteShowtimeByID(id string) error {
+	query := "DELETE FROM showtimes WHERE id = ?"
+	_, err := bot.db.Exec(query, id)
+	return err
 }
 
 func (bot *CinemaBot) Connect() error {
@@ -653,6 +891,13 @@ func main() {
 		log.Fatalf("Failed to create bot: %v", err)
 	}
 
+	// Ensure database is closed on exit
+	defer func() {
+		if err := bot.Close(); err != nil {
+			log.Printf("Error closing database: %v", err)
+		}
+	}()
+
 	// Start health check server
 	startHealthCheckServer()
 
@@ -660,6 +905,7 @@ func main() {
 	log.Printf("Server: %s", bot.config.Server)
 	log.Printf("Nick: %s", bot.config.Nick)
 	log.Printf("Channel: %s", bot.config.Channel)
+	log.Printf("Database: %s", bot.config.DatabasePath)
 	log.Printf("Timezone: UTC")
 
 	if err := bot.Connect(); err != nil {
