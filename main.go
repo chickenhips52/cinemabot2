@@ -56,7 +56,6 @@ func NewCinemaBot(configFile string) (*CinemaBot, error) {
 		return nil, fmt.Errorf("failed to initialize database: %v", err)
 	}
 
-
 	// Setup IRC connection
 	bot.conn = irc.IRC(bot.config.Nick, bot.config.Nick)
 	bot.conn.VerboseCallbackHandler = false
@@ -73,7 +72,7 @@ func (bot *CinemaBot) loadConfig(configFile string) error {
 		// Default config if no file specified
 		bot.config = Config{
 			Server:       "irc.snoonet.org:6667",
-			Nick:         "marquee`",
+			Nick:         "marquee",
 			Channel:      "#stopdrinkingcinema",
 			DatabasePath: "cinema_bot.db",
 		}
