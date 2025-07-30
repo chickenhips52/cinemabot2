@@ -72,7 +72,9 @@ func (bot *CinemaBot) loadConfig(configFile string) error {
 		// Default config if no file specified
 		bot.config = Config{
 			Server:       "irc.snoonet.org:6667",
-			Nick:         "marquee",
+			Nick:         "marquee
+			
+			",
 			Channel:      "#stopdrinkingcinema",
 			DatabasePath: "cinema_bot.db",
 		}
