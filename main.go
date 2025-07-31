@@ -163,8 +163,8 @@ func (bot *CinemaBot) setupHandlers() {
 		bot.mu.Lock()
 		defer bot.mu.Unlock()
 
-		// Handle ;showtime command
-		if strings.HasPrefix(message, ";showtime") {
+		// Handle showtime command
+		if strings.HasPrefix(message, ".showtime") {
 			if bot.authorizedShowtimeCommand(nick, host) {
 				bot.handleShowtimeCommand(message, nick)
 			} else {
@@ -173,12 +173,12 @@ func (bot *CinemaBot) setupHandlers() {
 			}
 		}
 
-		// Handle ;nextmovie command (available to everyone)
-		if strings.HasPrefix(message, ";nextmovie") {
+		// Handle nextmovie command (available to everyone)
+		if strings.HasPrefix(message, ".nextmovie") {
 			bot.handleNextMovieCommand()
 		}
 
-		if strings.HasPrefix(message, ";date") {
+		if strings.HasPrefix(message, ".date") {
 			bot.handleDateCommand()
 		}
 	})
@@ -599,7 +599,7 @@ func (bot *CinemaBot) handleShowtimeCommand(message, nick string) {
 	// Parse the command more carefully to handle quoted arguments
 	args := bot.parseArgs(message)
 	if len(args) < 2 {
-		bot.conn.Privmsg(bot.config.Channel, "Usage: ;showtime -list | -create [options] | -delete=\"id\"")
+		bot.conn.Privmsg(bot.config.Channel, "Usage: .showtime -list | -create [options] | -delete=\"id\"")
 		return
 	}
 
@@ -620,7 +620,7 @@ func (bot *CinemaBot) handleShowtimeCommand(message, nick string) {
 	case args[1] == "-create":
 		bot.createShowtime(args, nick)
 	default:
-		bot.conn.Privmsg(bot.config.Channel, "Usage: ;showtime -list | -create [options] | -delete=\"id\"")
+		bot.conn.Privmsg(bot.config.Channel, "Usage: .showtime -list | -create [options] | -delete=\"id\"")
 	}
 }
 
@@ -783,7 +783,7 @@ func (bot *CinemaBot) deleteShowtime(args []string, nick string) {
 	}
 
 	if id == "" {
-		bot.conn.Privmsg(bot.config.Channel, "Usage: ;showtime -delete=\"id\"")
+		bot.conn.Privmsg(bot.config.Channel, "Usage: .showtime -delete=\"id\"")
 		return
 	}
 
